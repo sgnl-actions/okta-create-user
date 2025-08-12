@@ -1,7 +1,7 @@
 {
-  "name": "@sgnl/job-template",
+  "name": "@sgnl-actions/okta-create-user",
   "version": "1.0.0",
-  "description": "Template for SGNL JavaScript jobs",
+  "description": "Create a new user in Okta",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

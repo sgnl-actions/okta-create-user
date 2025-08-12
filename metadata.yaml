@@ -1,48 +1,125 @@
-name: job-template
-description: Template for SGNL JavaScript jobs - replace with your job description
+name: okta-create-user
+description: Create a new user in Okta with profile attributes and group assignments
 
 # Input parameters for web form generation
 inputs:
-  target:
+  email:
     type: text
-    description: Target resource identifier (e.g., user email, group ID)
+    description: User's email address
+    required: true
+    validation:
+      min: 1
+      max: 200
+
+  login:
+    type: text
+    description: User's login/username
     required: true
     validation:
       min: 1
       max: 100
 
-  action:
+  firstName:
     type: text
-    description: Action to perform on the target resource
+    description: User's first name
     required: true
     validation:
       min: 1
+      max: 100
+
+  lastName:
+    type: text
+    description: User's last name
+    required: true
+    validation:
+      min: 1
+      max: 100
+
+  department:
+    type: text
+    description: User's department (optional)
+    required: false
+    validation:
+      min: 0
+      max: 100
+
+  employeeNumber:
+    type: text
+    description: Employee number (optional)
+    required: false
+    validation:
+      min: 0
       max: 50
 
-  options:
-    type: array
-    description: Additional options for the operation
+  groupIds:
+    type: text
+    description: Comma-separated list of group IDs to assign user to (optional)
     required: false
-    item_type: text
     validation:
-      max: 10
+      min: 0
+      max: 500
 
-  dry_run:
-    type: boolean
-    description: Preview changes without executing them
+  additionalProfileAttributes:
+    type: text
+    description: JSON string of additional profile attributes (optional)
     required: false
-    default: false
+    validation:
+      min: 0
+      max: 1000
+
+  oktaDomain:
+    type: text
+    description: The Okta domain (e.g., example.okta.com)
+    required: true
+    validation:
+      min: 1
+      max: 100
+      pattern: '^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.okta(\.com|\.eu|\.au|\.jp)?$'
+
+# Required secrets (configured at deployment time)
+secrets:
+  - OKTA_API_TOKEN
 
 # Expected output structure
 outputs:
+  id:
+    type: text
+    description: The Okta user ID of the created user
+
   status:
     type: text
-    description: Operation result (success, failed, recovered, etc.)
+    description: The user's status in Okta
 
-  target:
-    type: text
-    description: The target resource that was processed
-
-  processed_at:
+  created:
     type: datetime
-    description: When the operation completed (ISO 8601)
+    description: When the user was created (ISO 8601)
+
+  activated:
+    type: datetime
+    description: When the user was activated (ISO 8601)
+
+  statusChanged:
+    type: datetime
+    description: When the user's status last changed (ISO 8601)
+
+  lastLogin:
+    type: datetime
+    description: When the user last logged in (ISO 8601)
+
+  lastUpdated:
+    type: datetime
+    description: When the user was last updated (ISO 8601)
+
+  profile:
+    type: object
+    description: The user's profile information
+
+  groupIds:
+    type: array
+    description: List of group IDs the user was assigned to
+
+# Runtime configuration
+runtime:
+  type: nodejs-22
+  timeout: 30s
+  memory: 128Mi

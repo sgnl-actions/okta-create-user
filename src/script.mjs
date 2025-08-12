@@ -1,100 +1,200 @@
 /**
- * SGNL Job Template
+ * Okta Create User Action
  *
- * This template provides a starting point for implementing SGNL jobs.
- * Replace this implementation with your specific business logic.
+ * Creates a new user in Okta with specified profile attributes and optionally
+ * assigns them to groups.
  */
+
+/**
+ * Helper function to create a user in Okta
+ * @private
+ */
+async function createUser(params, oktaDomain, authToken) {
+  const { email, login, firstName, lastName, department, employeeNumber, groupIds, additionalProfileAttributes } = params;
+  
+  // Build profile object with required fields
+  const profile = {
+    email,
+    login,
+    firstName,
+    lastName
+  };
+
+  // Add optional fields if provided
+  if (department) {
+    profile.department = department;
+  }
+  if (employeeNumber) {
+    profile.employeeNumber = employeeNumber;
+  }
+
+  // Parse and add additional profile attributes if provided
+  if (additionalProfileAttributes) {
+    try {
+      const additionalAttrs = JSON.parse(additionalProfileAttributes);
+      Object.assign(profile, additionalAttrs);
+    } catch (error) {
+      throw new Error(`Invalid additionalProfileAttributes JSON: ${error.message}`);
+    }
+  }
+
+  // Build request body
+  const requestBody = {
+    profile
+  };
+
+  // Parse and add group IDs if provided
+  if (groupIds) {
+    const groupIdArray = groupIds.split(',').map(id => id.trim()).filter(id => id);
+    if (groupIdArray.length > 0) {
+      requestBody.groupIds = groupIdArray;
+    }
+  }
+
+  const url = new URL('/api/v1/users', `https://${oktaDomain}`);
+  const authHeader = authToken.startsWith('SSWS ') ? authToken : `SSWS ${authToken}`;
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  return response;
+}
+
 
 export default {
   /**
-   * Main execution handler - implement your job logic here
+   * Main execution handler - creates a new user in Okta
    * @param {Object} params - Job input parameters
+   * @param {string} params.email - User's email address
+   * @param {string} params.login - User's login/username
+   * @param {string} params.firstName - User's first name
+   * @param {string} params.lastName - User's last name
+   * @param {string} params.department - User's department (optional)
+   * @param {string} params.employeeNumber - Employee number (optional)
+   * @param {string} params.groupIds - Comma-separated group IDs (optional)
+   * @param {string} params.additionalProfileAttributes - JSON string of additional attributes (optional)
+   * @param {string} params.oktaDomain - The Okta domain
    * @param {Object} context - Execution context with env, secrets, outputs
-   * @returns {Object} Job results
+   * @returns {Object} Job results with created user information
    */
   invoke: async (params, context) => {
-    console.log('Starting job execution');
-    console.log(`Processing target: ${params.target}`);
-    console.log(`Action: ${params.action}`);
+    const { email, login, firstName, lastName, oktaDomain } = params;
 
-    // TODO: Replace with your implementation
-    const { target, action, options = [], dry_run = false } = params;
+    console.log(`Starting Okta user creation for ${email}`);
 
-    if (dry_run) {
-      console.log('DRY RUN: No changes will be made');
+    // Validate required inputs
+    if (!email || typeof email !== 'string') {
+      throw new Error('Invalid or missing email parameter');
+    }
+    if (!login || typeof login !== 'string') {
+      throw new Error('Invalid or missing login parameter');
+    }
+    if (!firstName || typeof firstName !== 'string') {
+      throw new Error('Invalid or missing firstName parameter');
+    }
+    if (!lastName || typeof lastName !== 'string') {
+      throw new Error('Invalid or missing lastName parameter');
+    }
+    if (!oktaDomain || typeof oktaDomain !== 'string') {
+      throw new Error('Invalid or missing oktaDomain parameter');
     }
 
-    // Access environment variables
-    const environment = context.env.ENVIRONMENT || 'development';
-    console.log(`Running in ${environment} environment`);
-
-    // Access secrets securely (example)
-    if (context.secrets.API_KEY) {
-      console.log(`Using API key ending in ...${context.secrets.API_KEY.slice(-4)}`);
+    // Validate Okta API token is present
+    if (!context.secrets?.OKTA_API_TOKEN) {
+      throw new Error('Missing required secret: OKTA_API_TOKEN');
     }
 
-    // Use outputs from previous jobs in workflow
-    if (context.outputs && Object.keys(context.outputs).length > 0) {
-      console.log(`Available outputs from ${Object.keys(context.outputs).length} previous jobs`);
-      console.log(`Previous job outputs: ${Object.keys(context.outputs).join(', ')}`);
+    // Make the API request to create user
+    const response = await createUser(
+      params,
+      oktaDomain,
+      context.secrets.OKTA_API_TOKEN
+    );
+
+    // Handle the response
+    if (response.ok) {
+      const userData = await response.json();
+      console.log(`Successfully created user ${userData.id} (${email})`);
+
+      // Extract group IDs that were assigned
+      const assignedGroupIds = params.groupIds ? 
+        params.groupIds.split(',').map(id => id.trim()).filter(id => id) : 
+        [];
+
+      return {
+        id: userData.id,
+        status: userData.status,
+        created: userData.created,
+        activated: userData.activated,
+        statusChanged: userData.statusChanged,
+        lastLogin: userData.lastLogin,
+        lastUpdated: userData.lastUpdated,
+        profile: userData.profile,
+        groupIds: assignedGroupIds
+      };
     }
 
-    // TODO: Implement your business logic here
-    console.log(`Performing ${action} on ${target}...`);
+    // Handle error responses
+    const statusCode = response.status;
+    let errorMessage = `Failed to create user: HTTP ${statusCode}`;
 
-    if (options.length > 0) {
-      console.log(`Processing ${options.length} options: ${options.join(', ')}`);
+    try {
+      const errorBody = await response.json();
+      if (errorBody.errorSummary) {
+        errorMessage = `Failed to create user: ${errorBody.errorSummary}`;
+      }
+      console.error('Okta API error response:', errorBody);
+    } catch {
+      // Response might not be JSON
+      console.error('Failed to parse error response');
     }
 
-    console.log(`Successfully completed ${action} on ${target}`);
-
-    // Return structured results
-    return {
-      status: dry_run ? 'dry_run_completed' : 'success',
-      target: target,
-      action: action,
-      options_processed: options.length,
-      environment: environment,
-      processed_at: new Date().toISOString()
-      // Job completed successfully
-    };
+    // Throw error with status code for proper error handling
+    const error = new Error(errorMessage);
+    error.statusCode = statusCode;
+    throw error;
   },
 
   /**
-   * Error recovery handler - implement error handling logic
+   * Error recovery handler - framework handles retries by default
    * @param {Object} params - Original params plus error information
    * @param {Object} context - Execution context
    * @returns {Object} Recovery results
    */
   error: async (params, _context) => {
-    const { error, target } = params;
-    console.error(`Job encountered error while processing ${target}: ${error.message}`);
+    const { error, email } = params;
+    console.error(`User creation failed for ${email}: ${error.message}`);
 
-    // TODO: Implement your error recovery logic
-    // Example: Check if error is retryable and attempt recovery
-
-    // For now, just throw the error - implement your logic here
-    throw new Error(`Unable to recover from error: ${error.message}`);
+    // Framework handles retries for transient errors (429, 502, 503, 504)
+    // Just re-throw the error to let the framework handle it
+    throw error;
   },
 
   /**
-   * Graceful shutdown handler - implement cleanup logic
+   * Graceful shutdown handler - cleanup when job is halted
    * @param {Object} params - Original params plus halt reason
    * @param {Object} context - Execution context
    * @returns {Object} Cleanup results
    */
   halt: async (params, _context) => {
-    const { reason, target } = params;
-    console.log(`Job is being halted (${reason}) while processing ${target}`);
+    const { reason, email } = params;
+    console.log(`User creation job is being halted (${reason}) for ${email}`);
 
-    // TODO: Implement your cleanup logic
-    // Example: Save partial results, close connections, etc.
+    // No cleanup needed for this simple operation
+    // The POST request either completed or didn't
 
     return {
-      status: 'halted',
-      target: target || 'unknown',
+      email: email || 'unknown',
       reason: reason,
-      halted_at: new Date().toISOString()
+      haltedAt: new Date().toISOString(),
+      cleanupCompleted: true
     };
   }
 };
