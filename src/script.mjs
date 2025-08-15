@@ -11,7 +11,7 @@
  */
 async function createUser(params, oktaDomain, authToken) {
   const { email, login, firstName, lastName, department, employeeNumber, groupIds, additionalProfileAttributes } = params;
-  
+
   // Build profile object with required fields
   const profile = {
     email,
@@ -124,8 +124,8 @@ export default {
       console.log(`Successfully created user ${userData.id} (${email})`);
 
       // Extract group IDs that were assigned
-      const assignedGroupIds = params.groupIds ? 
-        params.groupIds.split(',').map(id => id.trim()).filter(id => id) : 
+      const assignedGroupIds = params.groupIds ?
+        params.groupIds.split(',').map(id => id.trim()).filter(id => id) :
         [];
 
       return {
