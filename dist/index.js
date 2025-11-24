@@ -14,7 +14,7 @@
  */
 async function createUser(params, oktaDomain, authToken) {
   const { email, login, firstName, lastName, department, employeeNumber, groupIds, additionalProfileAttributes } = params;
-  
+
   // Build profile object with required fields
   const profile = {
     email,
@@ -85,6 +85,7 @@ var script = {
    * @param {string} params.additionalProfileAttributes - JSON string of additional attributes (optional)
    * @param {string} params.oktaDomain - The Okta domain
    * @param {Object} context - Execution context with env, secrets, outputs
+   * @param {string} context.secrets.BEARER_AUTH_TOKEN - Bearer token for Okta API authentication
    * @returns {Object} Job results with created user information
    */
   invoke: async (params, context) => {
@@ -110,15 +111,15 @@ var script = {
     }
 
     // Validate Okta API token is present
-    if (!context.secrets?.OKTA_API_TOKEN) {
-      throw new Error('Missing required secret: OKTA_API_TOKEN');
+    if (!context.secrets?.BEARER_AUTH_TOKEN) {
+      throw new Error('Missing required secret: BEARER_AUTH_TOKEN');
     }
 
     // Make the API request to create user
     const response = await createUser(
       params,
       oktaDomain,
-      context.secrets.OKTA_API_TOKEN
+      context.secrets.BEARER_AUTH_TOKEN
     );
 
     // Handle the response
@@ -127,8 +128,8 @@ var script = {
       console.log(`Successfully created user ${userData.id} (${email})`);
 
       // Extract group IDs that were assigned
-      const assignedGroupIds = params.groupIds ? 
-        params.groupIds.split(',').map(id => id.trim()).filter(id => id) : 
+      const assignedGroupIds = params.groupIds ?
+        params.groupIds.split(',').map(id => id.trim()).filter(id => id) :
         [];
 
       return {
