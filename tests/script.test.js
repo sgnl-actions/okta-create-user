@@ -69,7 +69,7 @@ describe('Okta Create User Script', () => {
         login: 'john.doe@example.com',
         firstName: 'John',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       const result = await script.invoke(params, mockContext);
@@ -88,7 +88,7 @@ describe('Okta Create User Script', () => {
         lastName: 'Doe',
         department: 'Engineering',
         employeeNumber: 'EMP001',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       const result = await script.invoke(params, mockContext);
@@ -104,7 +104,7 @@ describe('Okta Create User Script', () => {
         firstName: 'John',
         lastName: 'Doe',
         groupIds: 'group1, group2, group3',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       const result = await script.invoke(params, mockContext);
@@ -119,7 +119,7 @@ describe('Okta Create User Script', () => {
         firstName: 'John',
         lastName: 'Doe',
         additionalProfileAttributes: '{"mobilePhone": "555-1234", "title": "Engineer"}',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       const result = await script.invoke(params, mockContext);
@@ -135,7 +135,7 @@ describe('Okta Create User Script', () => {
         firstName: 'John',
         lastName: 'Doe',
         additionalProfileAttributes: 'invalid-json',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       await expect(script.invoke(params, mockContext))
@@ -147,7 +147,7 @@ describe('Okta Create User Script', () => {
         login: 'john.doe@example.com',
         firstName: 'John',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       await expect(script.invoke(params, mockContext))
@@ -159,7 +159,7 @@ describe('Okta Create User Script', () => {
         email: 'john.doe@example.com',
         firstName: 'John',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       await expect(script.invoke(params, mockContext))
@@ -171,7 +171,7 @@ describe('Okta Create User Script', () => {
         email: 'john.doe@example.com',
         login: 'john.doe@example.com',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       await expect(script.invoke(params, mockContext))
@@ -183,14 +183,14 @@ describe('Okta Create User Script', () => {
         email: 'john.doe@example.com',
         login: 'john.doe@example.com',
         firstName: 'John',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       await expect(script.invoke(params, mockContext))
         .rejects.toThrow('Invalid or missing lastName parameter');
     });
 
-    test('should throw error for missing oktaDomain', async () => {
+    test('should throw error for missing address', async () => {
       const params = {
         email: 'john.doe@example.com',
         login: 'john.doe@example.com',
@@ -199,7 +199,7 @@ describe('Okta Create User Script', () => {
       };
 
       await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('Invalid or missing oktaDomain parameter');
+        .rejects.toThrow('No URL specified. Provide address parameter or ADDRESS environment variable');
     });
 
     test('should throw error for missing OKTA_API_TOKEN', async () => {
@@ -208,7 +208,7 @@ describe('Okta Create User Script', () => {
         login: 'john.doe@example.com',
         firstName: 'John',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       const contextWithoutToken = {
@@ -217,7 +217,7 @@ describe('Okta Create User Script', () => {
       };
 
       await expect(script.invoke(params, contextWithoutToken))
-        .rejects.toThrow('Missing required secret: BEARER_AUTH_TOKEN');
+        .rejects.toThrow('No authentication configured');
     });
 
     test('should handle API error with errorSummary', async () => {
@@ -226,7 +226,7 @@ describe('Okta Create User Script', () => {
         login: 'john.doe@example.com',
         firstName: 'John',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       global.fetch = () => Promise.resolve({
@@ -251,7 +251,7 @@ describe('Okta Create User Script', () => {
         login: 'john.doe@example.com',
         firstName: 'John',
         lastName: 'Doe',
-        oktaDomain: 'example.okta.com'
+        address: 'https://example.okta.com'
       };
 
       global.fetch = () => Promise.resolve({
