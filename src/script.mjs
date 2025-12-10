@@ -5,7 +5,7 @@
  * assigns them to groups.
  */
 
-import { getBaseUrl, getAuthorizationHeader } from '@sgnl-actions/utils';
+import { getBaseURL, getAuthorizationHeader, resolveJSONPathTemplates} from '@sgnl-actions/utils';
 
 /**
  * Helper function to create a user in Okta
@@ -105,7 +105,15 @@ export default {
    * @returns {Object} Job results with created user information
    */
   invoke: async (params, context) => {
-    const { email, login, firstName, lastName } = params;
+    const jobContext = context.data || {};
+
+    // Resolve JSONPath templates in params
+    const { result: resolvedParams, errors } = resolveJSONPathTemplates(params, jobContext);
+    if (errors.length > 0) {
+      throw new Error(`Failed to resolve template values: ${errors.join(', ')}`);
+    }
+
+    const { email, login, firstName, lastName } = resolvedParams;
 
     console.log(`Starting Okta user creation for ${email}`);
 
@@ -124,7 +132,7 @@ export default {
     }
 
     // Get base URL using utility function
-    const baseUrl = getBaseUrl(params, context);
+    const baseUrl = getBaseURL(resolvedParams, context);
 
     // Get authorization header
     let authHeader = await getAuthorizationHeader(context);
@@ -137,7 +145,7 @@ export default {
 
     // Make the API request to create user
     const response = await createUser(
-      params,
+      resolvedParams,
       baseUrl,
       authHeader
     );
@@ -148,8 +156,8 @@ export default {
       console.log(`Successfully created user ${userData.id} (${email})`);
 
       // Extract group IDs that were assigned
-      const assignedGroupIds = params.groupIds ?
-        params.groupIds.split(',').map(id => id.trim()).filter(id => id) :
+      const assignedGroupIds = resolvedParams.groupIds ?
+        resolvedParams.groupIds.split(',').map(id => id.trim()).filter(id => id) :
         [];
 
       return {
