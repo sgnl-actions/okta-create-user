@@ -113,6 +113,10 @@ outputs:
     type: array
     description: List of group IDs the user was assigned to
 
+  address:
+    type: text
+    description: The Okta API base URL used
+
 # Runtime configuration
 runtime:
   type: nodejs-22
