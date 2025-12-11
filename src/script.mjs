@@ -117,20 +117,6 @@ export default {
 
     console.log(`Starting Okta user creation for ${email}`);
 
-    // Validate required inputs
-    if (!email || typeof email !== 'string') {
-      throw new Error('Invalid or missing email parameter');
-    }
-    if (!login || typeof login !== 'string') {
-      throw new Error('Invalid or missing login parameter');
-    }
-    if (!firstName || typeof firstName !== 'string') {
-      throw new Error('Invalid or missing firstName parameter');
-    }
-    if (!lastName || typeof lastName !== 'string') {
-      throw new Error('Invalid or missing lastName parameter');
-    }
-
     // Get base URL using utility function
     const baseUrl = getBaseURL(resolvedParams, context);
 
