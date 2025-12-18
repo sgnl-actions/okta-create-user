@@ -555,28 +555,14 @@ var script = {
 
     console.log(`Starting Okta user creation for ${email}`);
 
-    // Validate required inputs
-    if (!email || typeof email !== 'string') {
-      throw new Error('Invalid or missing email parameter');
-    }
-    if (!login || typeof login !== 'string') {
-      throw new Error('Invalid or missing login parameter');
-    }
-    if (!firstName || typeof firstName !== 'string') {
-      throw new Error('Invalid or missing firstName parameter');
-    }
-    if (!lastName || typeof lastName !== 'string') {
-      throw new Error('Invalid or missing lastName parameter');
-    }
-
     // Get base URL using utility function
     const baseUrl = getBaseURL(resolvedParams, context);
 
     // Get authorization header
     let authHeader = await getAuthorizationHeader(context);
 
-    // Handle Okta's SSWS token format for Bearer auth mode
-    if (authHeader.startsWith('Bearer ')) {
+    // Handle Okta's SSWS token format - only for Bearer token auth mode
+    if (context.secrets.BEARER_AUTH_TOKEN && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       authHeader = token.startsWith('SSWS ') ? token : `SSWS ${token}`;
     }

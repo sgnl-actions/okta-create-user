@@ -142,54 +142,6 @@ describe('Okta Create User Script', () => {
         .rejects.toThrow('Invalid additionalProfileAttributes JSON');
     });
 
-    test('should throw error for missing email', async () => {
-      const params = {
-        login: 'john.doe@example.com',
-        firstName: 'John',
-        lastName: 'Doe',
-        address: 'https://example.okta.com'
-      };
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('Invalid or missing email parameter');
-    });
-
-    test('should throw error for missing login', async () => {
-      const params = {
-        email: 'john.doe@example.com',
-        firstName: 'John',
-        lastName: 'Doe',
-        address: 'https://example.okta.com'
-      };
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('Invalid or missing login parameter');
-    });
-
-    test('should throw error for missing firstName', async () => {
-      const params = {
-        email: 'john.doe@example.com',
-        login: 'john.doe@example.com',
-        lastName: 'Doe',
-        address: 'https://example.okta.com'
-      };
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('Invalid or missing firstName parameter');
-    });
-
-    test('should throw error for missing lastName', async () => {
-      const params = {
-        email: 'john.doe@example.com',
-        login: 'john.doe@example.com',
-        firstName: 'John',
-        address: 'https://example.okta.com'
-      };
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('Invalid or missing lastName parameter');
-    });
-
     test('should throw error for missing address', async () => {
       const params = {
         email: 'john.doe@example.com',
