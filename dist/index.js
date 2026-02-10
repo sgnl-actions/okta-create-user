@@ -165,6 +165,31 @@ function getBaseURL(params, context) {
  */
 
 
+// Okta API error codes
+const OKTA_ERROR_API_VALIDATION_EXCEPTION = 'E0000001';
+
+/**
+ * Helper function to fetch an existing user by login
+ * @private
+ */
+async function getUser(login, baseUrl, authHeader) {
+  const url = `${baseUrl}/api/v1/users/${encodeURIComponent(login)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': authHeader,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch existing user: HTTP ${response.status}`);
+  }
+
+  return await response.json();
+}
+
 /**
  * Helper function to create a user in Okta
  * @private
@@ -226,6 +251,65 @@ async function createUser(params, baseUrl, authHeader) {
 
   return response;
 }
+
+/**
+ * Parse comma-separated group IDs from params
+ * @param {Object} params - Job input parameters
+ * @returns {Array<string>} Array of group IDs
+ * @private
+ */
+function parseGroupIds(params) {
+  if (!params.groupIds) {
+    return [];
+  }
+  return params.groupIds.split(',').map(id => id.trim()).filter(id => id);
+}
+
+/**
+ * Build standardized user response object
+ * @param {Object} userData - User data from Okta API
+ * @param {Array<string>} groupIds - Array of group IDs
+ * @returns {Object} Standardized response object
+ * @private
+ */
+function buildUserResponse(userData, groupIds) {
+  return {
+    id: userData.id,
+    status: userData.status,
+    created: userData.created,
+    activated: userData.activated,
+    statusChanged: userData.statusChanged,
+    lastLogin: userData.lastLogin,
+    lastUpdated: userData.lastUpdated,
+    profile: userData.profile,
+    groupIds: groupIds
+  };
+}
+
+/**
+ * Determines if an error response should be treated as acceptable (idempotent)
+ * @param {number} statusCode - HTTP status code
+ * @param {Object} errorBody - Parsed error response body
+ * @returns {boolean} True if error should be accepted as success
+ * @private
+ */
+function shouldAcceptError(statusCode, errorBody) {
+  // Accept 400 errors when user already exists (Okta returns 400 for duplicates)
+  if (statusCode === 400 && errorBody?.errorCode === OKTA_ERROR_API_VALIDATION_EXCEPTION) {
+    const causes = errorBody.errorCauses || [];
+
+    // Also check errorCauses array for "login" and "already exists" messages
+    for (const cause of causes) {
+      const causeMessage = cause.errorSummary?.toLowerCase() || '';
+      if (causeMessage.startsWith('login') && causeMessage.includes('already exists')) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 
 var script = {
   /**
@@ -291,38 +375,45 @@ var script = {
       const userData = await response.json();
       console.log(`Successfully created user ${userData.id} (${email})`);
 
-      // Extract group IDs that were assigned
-      const assignedGroupIds = params.groupIds ?
-        params.groupIds.split(',').map(id => id.trim()).filter(id => id) :
-        [];
-
-      return {
-        id: userData.id,
-        status: userData.status,
-        created: userData.created,
-        activated: userData.activated,
-        statusChanged: userData.statusChanged,
-        lastLogin: userData.lastLogin,
-        lastUpdated: userData.lastUpdated,
-        profile: userData.profile,
-        groupIds: assignedGroupIds
-      };
+      const groupIds = parseGroupIds(params);
+      return buildUserResponse(userData, groupIds);
     }
 
     // Handle error responses
     const statusCode = response.status;
     let errorMessage = `Failed to create user: HTTP ${statusCode}`;
+    let errorBody = null;
 
+    // Parse error response body once
     try {
-      const errorBody = await response.json();
-      if (errorBody.errorSummary) {
-        errorMessage = `Failed to create user: ${errorBody.errorSummary}`;
-      }
-      console.error('Okta API error response:', errorBody);
+      errorBody = await response.json();
     } catch {
       // Response might not be JSON
       console.error('Failed to parse error response');
     }
+
+    // Check if this is an acceptable error (e.g., user already exists)
+    if (errorBody && shouldAcceptError(statusCode, errorBody)) {
+      console.log(`User already exists for ${login} - fetching existing user data`);
+
+      try {
+        // Fetch the existing user to return their current data
+        const userData = await getUser(login, baseUrl, authHeader);
+
+        const groupIds = parseGroupIds(params);
+        return buildUserResponse(userData, groupIds);
+      } catch (fetchError) {
+        console.error(`Failed to fetch existing user: ${fetchError.message}`);
+        errorMessage = "User already exists but cannot fetch user info";
+      }
+    } else if (errorBody) {
+      if (errorBody.errorSummary) {
+        // set the error to be more specific once parsing the body
+        errorMessage = `Failed to create user: ${errorBody.errorSummary}`;
+      }
+      console.error('Okta API error response:', errorBody);
+    }
+
 
     // Throw error with status code for proper error handling
     const error = new Error(errorMessage);

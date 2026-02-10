@@ -218,6 +218,405 @@ describe('Okta Create User Script', () => {
       expect(error.message).toBe('Failed to create user: HTTP 500');
       expect(error.statusCode).toBe(500);
     });
+
+    test('should handle duplicate user error (user already exists) and fetch existing user', async () => {
+      const params = {
+        email: 'existing.user@example.com',
+        login: 'existing.user@example.com',
+        firstName: 'Existing',
+        lastName: 'User',
+        groupIds: 'group1, group2',
+        address: 'https://example.okta.com'
+      };
+
+      const fetchCalls = [];
+      global.fetch = (url, options) => {
+        fetchCalls.push({ url, method: options?.method });
+
+        // First call: POST to create user (returns duplicate error)
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            json: async () => ({
+              errorCode: 'E0000001',
+              errorSummary: 'Api validation failed: login',
+              errorCauses: [
+                {
+                  errorSummary: 'login: An object with this field already exists in the current organization'
+                }
+              ]
+            })
+          });
+        }
+
+        // Second call: GET to fetch existing user
+        if (options?.method === 'GET') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: 'existing-user-id-123',
+              status: 'ACTIVE',
+              created: '2024-01-01T10:00:00.000Z',
+              activated: '2024-01-01T10:00:00.000Z',
+              statusChanged: '2024-01-01T10:00:00.000Z',
+              lastLogin: '2024-01-10T15:30:00.000Z',
+              lastUpdated: '2024-01-10T15:30:00.000Z',
+              profile: {
+                firstName: 'Existing',
+                lastName: 'User',
+                email: 'existing.user@example.com',
+                login: 'existing.user@example.com'
+              }
+            })
+          });
+        }
+      };
+
+      const result = await script.invoke(params, mockContext);
+
+      // Verify fetch was called twice (POST then GET)
+      expect(fetchCalls.length).toBe(2);
+      expect(fetchCalls[0].method).toBe('POST');
+      expect(fetchCalls[1].method).toBe('GET');
+
+      // Verify the result contains existing user data
+      expect(result.id).toBe('existing-user-id-123');
+      expect(result.status).toBe('ACTIVE');
+      expect(result.profile.email).toBe('existing.user@example.com');
+      expect(result.groupIds).toEqual(['group1', 'group2']);
+      expect(result.lastLogin).toBe('2024-01-10T15:30:00.000Z');
+    });
+
+    test('should handle duplicate user error when GET fails', async () => {
+      const params = {
+        email: 'existing.user@example.com',
+        login: 'existing.user@example.com',
+        firstName: 'Existing',
+        lastName: 'User',
+        address: 'https://example.okta.com'
+      };
+
+      global.fetch = (url, options) => {
+        // First call: POST returns duplicate error
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            json: async () => ({
+              errorCode: 'E0000001',
+              errorSummary: 'Api validation failed: login',
+              errorCauses: [
+                {
+                  errorSummary: 'login: An object with this field already exists in the current organization'
+                }
+              ]
+            })
+          });
+        }
+
+        // Second call: GET fails
+        if (options?.method === 'GET') {
+          return Promise.resolve({
+            ok: false,
+            status: 404
+          });
+        }
+      };
+
+      const error = await script.invoke(params, mockContext).catch(e => e);
+
+      // Should fall through to throw the original error
+      expect(error.message).toBe('User already exists but cannot fetch user info');
+      expect(error.statusCode).toBe(400);
+    });
+
+    test('should NOT treat non-duplicate 400 errors as acceptable', async () => {
+      const params = {
+        email: 'john.doe@example.com',
+        login: 'john.doe@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        address: 'https://example.okta.com'
+      };
+
+      global.fetch = () => Promise.resolve({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          errorCode: 'E0000001',
+          errorSummary: 'Api validation failed: email',
+          errorCauses: [
+            {
+              errorSummary: 'email: Does not match required pattern'
+            }
+          ]
+        })
+      });
+
+      const error = await script.invoke(params, mockContext).catch(e => e);
+      expect(error.message).toBe('Failed to create user: Api validation failed: email');
+      expect(error.statusCode).toBe(400);
+    });
+
+    test('should handle duplicate user with different error code', async () => {
+      const params = {
+        email: 'existing.user@example.com',
+        login: 'existing.user@example.com',
+        firstName: 'Existing',
+        lastName: 'User',
+        address: 'https://example.okta.com'
+      };
+
+      // Error with different code should not be treated as acceptable
+      global.fetch = () => Promise.resolve({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          errorCode: 'E0000002',
+          errorSummary: 'Some other error',
+          errorCauses: [
+            {
+              errorSummary: 'login: An object with this field already exists in the current organization'
+            }
+          ]
+        })
+      });
+
+      const error = await script.invoke(params, mockContext).catch(e => e);
+      expect(error.message).toBe('Failed to create user: Some other error');
+      expect(error.statusCode).toBe(400);
+    });
+
+    test('should NOT accept error with empty errorCauses array', async () => {
+      const params = {
+        email: 'john.doe@example.com',
+        login: 'john.doe@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        address: 'https://example.okta.com'
+      };
+
+      global.fetch = () => Promise.resolve({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          errorCode: 'E0000001',
+          errorSummary: 'Api validation failed',
+          errorCauses: []
+        })
+      });
+
+      const error = await script.invoke(params, mockContext).catch(e => e);
+      expect(error.message).toBe('Failed to create user: Api validation failed');
+      expect(error.statusCode).toBe(400);
+    });
+
+    test('should NOT accept error when errorSummary does not start with "login"', async () => {
+      const params = {
+        email: 'john.doe@example.com',
+        login: 'john.doe@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        address: 'https://example.okta.com'
+      };
+
+      global.fetch = () => Promise.resolve({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          errorCode: 'E0000001',
+          errorSummary: 'Api validation failed',
+          errorCauses: [
+            {
+              errorSummary: 'email: An object with this field already exists'
+            }
+          ]
+        })
+      });
+
+      const error = await script.invoke(params, mockContext).catch(e => e);
+      expect(error.message).toBe('Failed to create user: Api validation failed');
+      expect(error.statusCode).toBe(400);
+    });
+
+    test('should handle errorCause without errorSummary field', async () => {
+      const params = {
+        email: 'john.doe@example.com',
+        login: 'john.doe@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        address: 'https://example.okta.com'
+      };
+
+      global.fetch = () => Promise.resolve({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          errorCode: 'E0000001',
+          errorSummary: 'Api validation failed',
+          errorCauses: [
+            {
+              errorCode: 'some-code'
+            }
+          ]
+        })
+      });
+
+      const error = await script.invoke(params, mockContext).catch(e => e);
+      expect(error.message).toBe('Failed to create user: Api validation failed');
+      expect(error.statusCode).toBe(400);
+    });
+
+    test('should handle multiple errorCauses and match the correct one', async () => {
+      const params = {
+        email: 'existing.user@example.com',
+        login: 'existing.user@example.com',
+        firstName: 'Existing',
+        lastName: 'User',
+        address: 'https://example.okta.com'
+      };
+
+      global.fetch = (url, options) => {
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            json: async () => ({
+              errorCode: 'E0000001',
+              errorSummary: 'Api validation failed',
+              errorCauses: [
+                {
+                  errorSummary: 'email: Does not match required pattern'
+                },
+                {
+                  errorSummary: 'login: An object with this field already exists in the current organization'
+                },
+                {
+                  errorSummary: 'firstName: Is required'
+                }
+              ]
+            })
+          });
+        }
+
+        if (options?.method === 'GET') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: 'existing-user-id-456',
+              status: 'ACTIVE',
+              created: '2024-01-01T10:00:00.000Z',
+              activated: '2024-01-01T10:00:00.000Z',
+              statusChanged: '2024-01-01T10:00:00.000Z',
+              lastLogin: null,
+              lastUpdated: '2024-01-01T10:00:00.000Z',
+              profile: {
+                firstName: 'Existing',
+                lastName: 'User',
+                email: 'existing.user@example.com',
+                login: 'existing.user@example.com'
+              }
+            })
+          });
+        }
+      };
+
+      const result = await script.invoke(params, mockContext);
+
+      expect(result.id).toBe('existing-user-id-456');
+      expect(result.status).toBe('ACTIVE');
+    });
+
+    test('should handle groupIds with various formats', async () => {
+      const params = {
+        email: 'john.doe@example.com',
+        login: 'john.doe@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        groupIds: '  group1  ,group2,  ,  group3  ,',
+        address: 'https://example.okta.com'
+      };
+
+      const result = await script.invoke(params, mockContext);
+
+      expect(result.groupIds).toEqual(['group1', 'group2', 'group3']);
+    });
+
+    test('should handle empty groupIds string', async () => {
+      const params = {
+        email: 'john.doe@example.com',
+        login: 'john.doe@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        groupIds: '',
+        address: 'https://example.okta.com'
+      };
+
+      const result = await script.invoke(params, mockContext);
+
+      expect(result.groupIds).toEqual([]);
+    });
+
+    test('should URL encode special characters in login when fetching user', async () => {
+      const params = {
+        email: 'test+user@example.com',
+        login: 'test+user@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        address: 'https://example.okta.com'
+      };
+
+      let getUserUrl = '';
+      global.fetch = (url, options) => {
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            json: async () => ({
+              errorCode: 'E0000001',
+              errorSummary: 'Api validation failed: login',
+              errorCauses: [
+                {
+                  errorSummary: 'login: An object with this field already exists in the current organization'
+                }
+              ]
+            })
+          });
+        }
+
+        if (options?.method === 'GET') {
+          getUserUrl = url;
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: 'user-with-special-chars',
+              status: 'ACTIVE',
+              created: '2024-01-01T10:00:00.000Z',
+              activated: '2024-01-01T10:00:00.000Z',
+              statusChanged: '2024-01-01T10:00:00.000Z',
+              lastLogin: null,
+              lastUpdated: '2024-01-01T10:00:00.000Z',
+              profile: {
+                firstName: 'Test',
+                lastName: 'User',
+                email: 'test+user@example.com',
+                login: 'test+user@example.com'
+              }
+            })
+          });
+        }
+      };
+
+      const result = await script.invoke(params, mockContext);
+
+      expect(result.id).toBe('user-with-special-chars');
+      // Verify URL encoding happened (+ should be encoded as %2B)
+      expect(getUserUrl).toContain('test%2Buser%40example.com');
+    });
   });
 
   describe('error handler', () => {
