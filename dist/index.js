@@ -158,6 +158,20 @@ function getBaseURL(params, context) {
 }
 
 /**
+ * Create full headers object with Authorization and common headers
+ * @param {Object} context - Execution context with env and secrets
+ * @returns {Promise<Object>} Headers object with Authorization, Accept, Content-Type
+ */
+async function createAuthHeaders(context) {
+  const authHeader = await getAuthorizationHeader(context);
+  return {
+    'Authorization': authHeader,
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
+  };
+}
+
+/**
  * Okta Create User Action
  *
  * Creates a new user in Okta with specified profile attributes and optionally
@@ -166,7 +180,7 @@ function getBaseURL(params, context) {
 
 
 async function getOktaAuthHeader(context) {
-  const header = await getAuthorizationHeader(context);
+  const header = await createAuthHeaders(context);
 
   if (context.secrets?.BEARER_AUTH_TOKEN && header.startsWith('Bearer ')) {
     const token = header.slice('Bearer '.length).trim();
@@ -216,7 +230,7 @@ async function getUser(login, baseUrl, authHeader) {
  * Helper function to create a user in Okta
  * @private
  */
-async function createUser(params, baseUrl, authHeader) {
+async function createUser(params, baseUrl, headers) {
   const { email, login, firstName, lastName, department, employeeNumber, groupIds, additionalProfileAttributes } = params;
 
   // Build profile object with required fields
@@ -261,11 +275,7 @@ async function createUser(params, baseUrl, authHeader) {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': authHeader,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify(requestBody)
   });
 
