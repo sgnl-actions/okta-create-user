@@ -186,6 +186,13 @@ async function createAuthHeaders(context) {
  */
 
 
+/**
+ * Creates authentication headers for Okta API requests
+ * Handles Okta's SSWS token format for Bearer token authentication
+ * @param {Object} context - Execution context containing secrets
+ * @returns {Promise<Object>} Headers object with Authorization header
+ * @private
+ */
 async function getOktaAuthHeader(context) {
   const headers = await createAuthHeaders(context);
 
@@ -198,6 +205,13 @@ async function getOktaAuthHeader(context) {
   return headers;
 }
 
+/**
+ * Validates that required parameters are present
+ * @param {Object} params - Parameters object to validate
+ * @param {Array<string>} keys - Array of required parameter keys
+ * @throws {Error} If any required parameters are missing
+ * @private
+ */
 function assertRequired(params, keys) {
   const missing = keys.filter((k) => !params?.[k]);
   if (missing.length > 0) {
@@ -205,6 +219,14 @@ function assertRequired(params, keys) {
   }
 }
 
+/**
+ * Validates that an existing user has the same email as the requested email
+ * Used to prevent creating duplicate users with different emails but same login
+ * @param {Object} existingProfile - Profile of the existing user from Okta
+ * @param {Object} params - Parameters containing the requested email
+ * @throws {Error} With statusCode 409 if emails don't match
+ * @private
+ */
 function assertSameIdentity(existingProfile, params) {
   const existingEmail = String(existingProfile.email).trim().toLowerCase();
   const incomingEmail = String(params.email).trim().toLowerCase();
@@ -217,7 +239,11 @@ function assertSameIdentity(existingProfile, params) {
 }
 
 /**
- * Helper function to fetch an existing user by login
+ * Fetches an existing user by login from Okta API
+ * @param {string} login - User's login/username to search for
+ * @param {string} baseUrl - Base URL for the Okta API
+ * @param {Object} headers - HTTP headers including authentication
+ * @returns {Promise<Response>} Fetch Response object (status 200 if user exists, 404 if not found)
  * @private
  */
 async function getUser(login, baseUrl, headers) {
@@ -232,7 +258,11 @@ async function getUser(login, baseUrl, headers) {
 }
 
 /**
- * Helper function to create a user in Okta
+ * Creates a new user in Okta with specified profile attributes and group assignments
+ * @param {Object} params - User creation parameters
+ * @param {string} baseUrl - Base URL for the Okta API
+ * @param {Object} headers - HTTP headers including authentication
+ * @returns {Promise<Response>} Fetch Response object with created user data
  * @private
  */
 async function createUser(params, baseUrl, headers) {
