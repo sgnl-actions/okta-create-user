@@ -394,7 +394,7 @@ describe('Okta Create User Script', () => {
 
       const error = await script.invoke(params, mockContext).catch(e => e);
 
-      expect(error.message).toBe('Login already exists in the organization for a different user');
+      expect(error.message).toBe('Login already exists in the organization for a user with a different email');
       expect(error.statusCode).toBe(409);
     });
 

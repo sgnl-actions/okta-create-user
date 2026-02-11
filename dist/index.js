@@ -180,14 +180,15 @@ async function createAuthHeaders(context) {
 
 
 async function getOktaAuthHeader(context) {
-  const header = await createAuthHeaders(context);
+  const headers = await createAuthHeaders(context);
 
-  if (context.secrets?.BEARER_AUTH_TOKEN && header.startsWith('Bearer ')) {
-    const token = header.slice('Bearer '.length).trim();
-    return token.startsWith('SSWS ') ? token : `SSWS ${token}`;
+  // Handle Okta's SSWS token format - only for Bearer token auth mode
+  if (context.secrets.BEARER_AUTH_TOKEN && headers['Authorization'].startsWith('Bearer ')) {
+    const token = headers['Authorization'].substring(7);
+    headers['Authorization'] = token.startsWith('SSWS ') ? token : `SSWS ${token}`;
   }
 
-  return header;
+  return headers;
 }
 
 function assertRequired(params, keys) {
@@ -202,7 +203,7 @@ function assertSameIdentity(existingProfile, params) {
   const incomingEmail = String(params.email).trim().toLowerCase();
 
   if (existingEmail !== incomingEmail) {
-    const err = new Error('Login already exists in the organization for a different user');
+    const err = new Error('Login already exists in the organization for a user with a different email');
     err.statusCode = 409;
     throw err;
   }
@@ -212,15 +213,12 @@ function assertSameIdentity(existingProfile, params) {
  * Helper function to fetch an existing user by login
  * @private
  */
-async function getUser(login, baseUrl, authHeader) {
+async function getUser(login, baseUrl, headers) {
   const url = `${baseUrl}/api/v1/users/${encodeURIComponent(login)}`;
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      'Authorization': authHeader,
-      'Accept': 'application/json'
-    }
+    headers: headers
   });
 
   return response;
