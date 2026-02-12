@@ -187,7 +187,82 @@ async function createAuthHeaders(context) {
 
 
 /**
- * Helper function to create a user in Okta
+ * Creates authentication headers for Okta API requests
+ * Handles Okta's SSWS token format for Bearer token authentication
+ * @param {Object} context - Execution context containing secrets
+ * @returns {Promise<Object>} Headers object with Authorization header
+ * @private
+ */
+async function getOktaAuthHeader(context) {
+  const headers = await createAuthHeaders(context);
+
+  // Handle Okta's SSWS token format - only for Bearer token auth mode
+  if (context.secrets.BEARER_AUTH_TOKEN && headers['Authorization'].startsWith('Bearer ')) {
+    const token = headers['Authorization'].substring(7);
+    headers['Authorization'] = token.startsWith('SSWS ') ? token : `SSWS ${token}`;
+  }
+
+  return headers;
+}
+
+/**
+ * Validates that required parameters are present
+ * @param {Object} params - Parameters object to validate
+ * @param {Array<string>} keys - Array of required parameter keys
+ * @throws {Error} If any required parameters are missing
+ * @private
+ */
+function assertRequired(params, keys) {
+  const missing = keys.filter((k) => !params?.[k]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required parameter(s): ${missing.join(', ')}`);
+  }
+}
+
+/**
+ * Validates that an existing user has the same email as the requested email
+ * Used to prevent creating duplicate users with different emails but same login
+ * @param {Object} existingProfile - Profile of the existing user from Okta
+ * @param {Object} params - Parameters containing the requested email
+ * @throws {Error} With statusCode 409 if emails don't match
+ * @private
+ */
+function assertSameIdentity(existingProfile, params) {
+  const existingEmail = String(existingProfile.email).trim().toLowerCase();
+  const incomingEmail = String(params.email).trim().toLowerCase();
+
+  if (existingEmail !== incomingEmail) {
+    const err = new Error('Login already exists in the organization for a user with a different email');
+    err.statusCode = 409;
+    throw err;
+  }
+}
+
+/**
+ * Fetches an existing user by login from Okta API
+ * @param {string} login - User's login/username to search for
+ * @param {string} baseUrl - Base URL for the Okta API
+ * @param {Object} headers - HTTP headers including authentication
+ * @returns {Promise<Response>} Fetch Response object (status 200 if user exists, 404 if not found)
+ * @private
+ */
+async function getUser(login, baseUrl, headers) {
+  const url = `${baseUrl}/api/v1/users/${encodeURIComponent(login)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: headers
+  });
+
+  return response;
+}
+
+/**
+ * Creates a new user in Okta with specified profile attributes and group assignments
+ * @param {Object} params - User creation parameters
+ * @param {string} baseUrl - Base URL for the Okta API
+ * @param {Object} headers - HTTP headers including authentication
+ * @returns {Promise<Response>} Fetch Response object with created user data
  * @private
  */
 async function createUser(params, baseUrl, headers) {
@@ -225,11 +300,9 @@ async function createUser(params, baseUrl, headers) {
   };
 
   // Parse and add group IDs if provided
-  if (groupIds) {
-    const groupIdArray = groupIds.split(',').map(id => id.trim()).filter(id => id);
-    if (groupIdArray.length > 0) {
-      requestBody.groupIds = groupIdArray;
-    }
+  const groupIdArray = parseGroupIds(groupIds);
+  if (groupIdArray.length > 0) {
+    requestBody.groupIds = groupIdArray;
   }
 
   // Build URL using base URL (already cleaned by getBaseUrl)
@@ -242,6 +315,40 @@ async function createUser(params, baseUrl, headers) {
   });
 
   return response;
+}
+
+/**
+ * Parse comma-separated group IDs from params
+ * @param {Object} params - Job input parameters
+ * @returns {Array<string>} Array of group IDs
+ * @private
+ */
+function parseGroupIds(groupIds) {
+  if (!groupIds) {
+    return [];
+  }
+  return groupIds.split(',').map(id => id.trim()).filter(id => id);
+}
+
+/**
+ * Build standardized user response object
+ * @param {Object} userData - User data from Okta API
+ * @param {Array<string>} groupIds - Array of group IDs
+ * @returns {Object} Standardized response object
+ * @private
+ */
+function buildUserResponse(userData, groupIds) {
+  return {
+    id: userData.id,
+    status: userData.status,
+    created: userData.created,
+    activated: userData.activated,
+    statusChanged: userData.statusChanged,
+    lastLogin: userData.lastLogin,
+    lastUpdated: userData.lastUpdated,
+    profile: userData.profile,
+    groupIds: groupIds
+  };
 }
 
 var script = {
@@ -279,71 +386,71 @@ var script = {
    * @returns {Object} Job results with created user information
    */
   invoke: async (params, context) => {
+    assertRequired(params, ['email', 'login', 'firstName', 'lastName']);
 
-    const { email, login, firstName, lastName } = params;
+    const { email, login } = params;
 
     console.log(`Starting Okta user creation for ${email}`);
 
     // Get base URL using utility function
     const baseUrl = getBaseURL(params, context);
+    const authHeader = await getOktaAuthHeader(context);
 
-    // Get headers using utility function
-    let headers = await createAuthHeaders(context);
+    // Check if user already exists
+    const getUserResponse = await getUser(login, baseUrl, authHeader);
 
-    // Handle Okta's SSWS token format - only for Bearer token auth mode
-    if (context.secrets.BEARER_AUTH_TOKEN && headers['Authorization'].startsWith('Bearer ')) {
-      const token = headers['Authorization'].substring(7);
-      headers['Authorization'] = token.startsWith('SSWS ') ? token : `SSWS ${token}`;
+    if (getUserResponse.ok) {
+      // User already exists, compare attributes
+      const existingUser = await getUserResponse.json();
+      assertSameIdentity(existingUser.profile, params);
+
+      // User exists with matching attributes, return existing user
+      console.log(`User ${existingUser.id} already exists with matching attributes`);
+      const groupIds = parseGroupIds(params.groupIds);
+      return buildUserResponse(existingUser, groupIds);
     }
 
-    // Make the API request to create user
-    const response = await createUser(
-      params,
-      baseUrl,
-      headers
-    );
+    if (getUserResponse.status === 404) {
+      // User doesn't exist, create new user
+      const createUserResponse = await createUser(params, baseUrl, authHeader);
 
-    // Handle the response
-    if (response.ok) {
-      const userData = await response.json();
-      console.log(`Successfully created user ${userData.id} (${email})`);
+      if (createUserResponse.ok) {
+        const userData = await createUserResponse.json();
+        console.log(`Successfully created user ${userData.id}`);
 
-      // Extract group IDs that were assigned
-      const assignedGroupIds = params.groupIds ?
-        params.groupIds.split(',').map(id => id.trim()).filter(id => id) :
-        [];
-
-      return {
-        id: userData.id,
-        status: userData.status,
-        created: userData.created,
-        activated: userData.activated,
-        statusChanged: userData.statusChanged,
-        lastLogin: userData.lastLogin,
-        lastUpdated: userData.lastUpdated,
-        profile: userData.profile,
-        groupIds: assignedGroupIds
-      };
-    }
-
-    // Handle error responses
-    const statusCode = response.status;
-    let errorMessage = `Failed to create user: HTTP ${statusCode}`;
-
-    try {
-      const errorBody = await response.json();
-      if (errorBody.errorSummary) {
-        errorMessage = `Failed to create user: ${errorBody.errorSummary}`;
+        const groupIds = parseGroupIds(params.groupIds);
+        return buildUserResponse(userData, groupIds);
       }
-      console.error('Okta API error response:', errorBody);
+
+      // Failed to create user
+      const errorMessage = `Failed to create user: HTTP ${createUserResponse.status}`;
+      let errorBody;
+      try {
+        errorBody = await createUserResponse.json();
+        console.error('Create user error details:', errorBody);
+      } catch {
+        console.error('Failed to parse error response');
+      }
+
+      const error = new Error(errorMessage);
+      error.statusCode = createUserResponse.status;
+      error.body = errorBody;
+      throw error;
+    }
+
+    // Unexpected error when checking for existing user
+    const errorMessage = `Failed to check if user exists: HTTP ${getUserResponse.status}`;
+    let errorBody;
+    try {
+      errorBody = await getUserResponse.json();
+      console.error('Get user error details:', errorBody);
     } catch {
-      // Response might not be JSON
       console.error('Failed to parse error response');
     }
 
-    // Throw error with status code for proper error handling
     const error = new Error(errorMessage);
-    error.statusCode = statusCode;
+    error.statusCode = getUserResponse.status;
+    error.body = errorBody;
     throw error;
   },
 
