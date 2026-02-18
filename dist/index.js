@@ -290,7 +290,7 @@ async function createUser(params, baseUrl, headers) {
       const additionalAttrs = JSON.parse(additionalProfileAttributes);
       Object.assign(profile, additionalAttrs);
     } catch (error) {
-      throw new Error(`Invalid additionalProfileAttributes JSON: ${error.message}`);
+      throw new Error(`Invalid additionalProfileAttributes JSON: ${error.message}`, { cause: error });
     }
   }
 

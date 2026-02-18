@@ -5,7 +5,7 @@
  * assigns them to groups.
  */
 
-import { getBaseURL, createAuthHeaders} from '@sgnl-actions/utils';
+import { getBaseURL, createAuthHeaders } from '@sgnl-actions/utils';
 
 /**
  * Creates authentication headers for Okta API requests
@@ -111,7 +111,7 @@ async function createUser(params, baseUrl, headers) {
       const additionalAttrs = JSON.parse(additionalProfileAttributes);
       Object.assign(profile, additionalAttrs);
     } catch (error) {
-      throw new Error(`Invalid additionalProfileAttributes JSON: ${error.message}`);
+      throw new Error(`Invalid additionalProfileAttributes JSON: ${error.message}`, { cause: error });
     }
   }
 
