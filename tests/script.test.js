@@ -536,7 +536,7 @@ describe('Okta Create User Script', () => {
 
       try {
         await script.invoke(params, mockContext);
-        fail('Should have thrown an error');
+        throw new Error('Should have thrown an error');
       } catch (error) {
         expect(error.statusCode).toBe(400);
         expect(error.body).toEqual(errorBody);
