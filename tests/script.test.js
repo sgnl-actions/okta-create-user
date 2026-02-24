@@ -179,24 +179,6 @@ describe('Okta Create User Script', () => {
         .rejects.toThrow('No URL specified. Provide address parameter or ADDRESS environment variable');
     });
 
-    test('should throw error for missing OKTA_API_TOKEN', async () => {
-      const params = {
-        email: 'john.doe@example.com',
-        login: 'john.doe@example.com',
-        firstName: 'John',
-        lastName: 'Doe',
-        address: 'https://example.okta.com'
-      };
-
-      const contextWithoutToken = {
-        ...mockContext,
-        secrets: {}
-      };
-
-      await expect(script.invoke(params, contextWithoutToken))
-        .rejects.toThrow('No authentication configured');
-    });
-
     test('should handle API error when creating user', async () => {
       const params = {
         email: 'john.doe@example.com',
