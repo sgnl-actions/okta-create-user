@@ -5,7 +5,7 @@
  * assigns them to groups.
  */
 
-import { getBaseURL, createAuthHeaders } from '@sgnl-actions/utils';
+import { getBaseURL, createHeaders } from '@sgnl-actions/utils';
 
 /**
  * Creates authentication headers for Okta API requests
@@ -15,7 +15,7 @@ import { getBaseURL, createAuthHeaders } from '@sgnl-actions/utils';
  * @private
  */
 async function getOktaAuthHeader(context) {
-  const headers = await createAuthHeaders(context);
+  const headers = await createHeaders(context);
 
   // Handle Okta's SSWS token format - only for Bearer token auth mode
   if (context.secrets.BEARER_AUTH_TOKEN && headers['Authorization'].startsWith('Bearer ')) {
